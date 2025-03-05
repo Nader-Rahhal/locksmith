@@ -1,7 +1,8 @@
 #include <atomic>
 #include <iostream>
 #include <unistd.h>
-
+#include <ncurses.h>
+#include <pthread.h>
 #include <sys/types.h>    // For basic type definitions
 #include <sys/sysctl.h>   // For sysctl API functions
 #include <sys/proc_info.h> // For process info structures
@@ -26,6 +27,14 @@ class SystemData {
             buffer = nullptr;
             procs = nullptr;
             proc_count = 0;
+        }
+
+        int getProcCount(){
+            return proc_count;
+        }
+
+        struct kinfo_proc* getProcTable(){
+            return procs;
         }
 
         bool acquire_lock(){
@@ -88,31 +97,55 @@ void* master_consumer(void* arg){
     lock->release_lock();
 }
 
-
-
-int main(){
-
-    SystemData lock;
+int main() {
+    initscr();
+    cbreak();
+    noecho();
+    keypad(stdscr, TRUE);
+    start_color();
     
-    // Test the lock
-    if (lock.acquire_lock()) {
-        std::cout << "Lock acquired" << std::endl;
-        lock.release_lock();
+    // Define color pairs
+    init_pair(1, COLOR_RED, COLOR_BLACK);
+    init_pair(2, COLOR_GREEN, COLOR_BLACK);
+    init_pair(3, COLOR_CYAN, COLOR_BLACK); // For header
+    
+    // Get system data
+    SystemData sys;
+    pthread_t producer_thread;
+    pthread_create(&producer_thread, NULL, producer, (void*)&sys);
+    pthread_join(producer_thread, NULL); 
+    
+    int procCount = sys.getProcCount();
+    struct kinfo_proc* procs = sys.getProcTable();
+    
+    // Clear the screen
+    clear();
+    
+    // Create the header bar
+    attron(A_BOLD | COLOR_PAIR(3));
+    mvprintw(0, 0, "%-10s %-20s %-10s %-10s %-8s", "PID", "COMMAND", "USER", "CPU%");
+    attroff(A_BOLD | COLOR_PAIR(3));
+    
+    // Draw a line under the header
+    mvhline(1, 0, ACS_HLINE, COLS);
+    
+    // Display process information
+    int row = 2;
+    for (int i = 0; i < procCount && row < LINES; i++) {
+        mvprintw(row, 0, "%-10d %-20s %-10d %-10.1f", 
+                 procs[i].kp_proc.p_pid, 
+                 procs[i].kp_proc.p_comm,
+                 procs[i].kp_eproc.e_ucred.cr_uid,
+                 (float)procs[i].kp_proc.p_pctcpu
+                 );
+        row++;
     }
-
-    int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
-
-    size_t oldlenp = 0;
-
-    sysctl(mib, 3, NULL, &oldlenp, NULL, 0);
-
-    void *oldp = malloc(oldlenp);
-
-    sysctl(mib, 3, oldp, &oldlenp, NULL, 0);
-
-    struct kinfo_proc* procs = (struct kinfo_proc*)oldp;
-    int count = oldlenp / sizeof(struct kinfo_proc);
-
-    free(oldp);
+    
+    // Refresh the screen and wait for a keypress
+    refresh();
+    getch();
+    
+    // Clean up
+    endwin();
     return 0;
 }
