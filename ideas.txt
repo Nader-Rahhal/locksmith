@@ -1,0 +1,37 @@
+- filtering based on CPU percentage, name etc
+eg. ./locksmith -> find cpu>50 & mem>20 & user=naderrahhal
+eg. find last24hr, 
+
+- easier commands for killing
+eg. ./locksmith -> kill [pid]
+- can do name killing too, but must warn user there are many with name
+
+
+Concurrency:
+
+Initialization:
+- Both locks (unprocessed and processed buffers) are free.
+- Producer starts running.
+
+Producer Stage (Collect Data)
+- Acquires unprocessed buffer lock.
+- Writes new data into the unprocessed buffer.
+- Releases unprocessed buffer lock.
+- Signals consumer that data is ready.
+
+Consumer Stage (Process Data & Update UI)
+- Waits until the producer signals that new data is available.
+- Acquires unprocessed buffer lock, moves data to a local variable, and releases the lock (minimizing lock time).
+- Processes the data (without holding a lock).
+- Acquires processed buffer lock, updates processed buffer, then releases it.
+- Signals the UI thread that new data is available.
+
+UI Stage: 
+- Waits for a signal from the consumer
+- Acquires processed buffer lock
+- Reads processed data
+- Releases lock
+- Renders data to the ncurses UI
+- Refresh
+
+
